@@ -194,34 +194,44 @@ export async function POST(request: NextRequest) {
 
     const validText = originalText || "";
 
-    // 不再校验 scenario/emotion 固定值 — 接受任意字符串
+    // ---- 智能模型切换 ----
+    // 有图片 + 有 Kimi Key → 用 Kimi vision
+    // 无图片 → 用 DeepSeek
+    const kimiKey = process.env.KIMI_API_KEY;
+    const useKimi = hasImage && !!kimiKey;
 
-    const baseURL = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
-    const apiKey = process.env.AI_API_KEY;
-    const model = process.env.AI_MODEL || "deepseek-chat";
+    let apiKey: string;
+    let baseURL: string;
+    let model: string;
+
+    if (useKimi) {
+      apiKey = kimiKey!;
+      baseURL = "https://api.moonshot.cn/v1";
+      model = "moonshot-v1-8k-vision-preview";
+    } else {
+      apiKey = process.env.AI_API_KEY || "";
+      baseURL = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
+      model = process.env.AI_MODEL || "deepseek-chat";
+    }
 
     if (!apiKey) {
       return NextResponse.json(
-        { error: "服务端未配置 AI_API_KEY，请在 .env 中设置" },
+        { error: "服务端未配置 API Key" },
         { status: 500 },
       );
     }
 
-    // 检测模型是否支持多模态 vision
-    const modelSupportsVision =
-      model.includes("gpt-4") || model.includes("claude") || model.includes("vision") || model.includes("vl");
-
-    // 构建 user message — 如果不支持 vision 有图片，优雅降级为纯文本
+    // 构建 user message — 有图走 vision 模式
     let userTextBase: string;
-    if (hasImage && modelSupportsVision) {
+    if (useKimi) {
       userTextBase = `对方原话："""${validText}"""\n\n请仔细阅读图片中的聊天上下文，结合对方的原话，生成 3 条不同角度的回复。`;
-    } else if (hasImage && !modelSupportsVision) {
-      userTextBase = `对方原话："""${validText}"""\n\n（注：用户上传了一张截图，但当前模型不支持图片识别。请仅基于对方的原话生成 3 条不同角度的回复。）`;
+    } else if (hasImage) {
+      userTextBase = `对方原话："""${validText}"""\n\n（注：用户上传了一张截图，但未配置图片识别模型。请仅基于对方原话生成 3 条不同角度的回复。）`;
     } else {
       userTextBase = `对方原话："""${validText}"""\n\n请生成 3 条不同角度的回复。`;
     }
 
-    const useVisionPayload = hasImage && modelSupportsVision;
+    const useVisionPayload = useKimi;
 
     const systemContent = buildSystemPrompt(scenario, emotion, persona, customReq);
 
