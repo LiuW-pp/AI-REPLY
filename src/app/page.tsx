@@ -200,12 +200,20 @@ function ImageUploader({ image, onUpload, onRemove }: { image: UploadedImage | n
     if (!file.type.startsWith("image/")) { emitToast("请选择图片文件"); return; }
     if (file.size > 10 * 1024 * 1024) { emitToast("图片不能超过 10MB"); return; }
     const reader = new FileReader();
-    reader.onload = () => onUpload({ base64: reader.result as string, name: file.name });
+    reader.onload = () => { onUpload({ base64: reader.result as string, name: file.name }); emitToast("图片已附加，AI 将识读内容"); };
     reader.readAsDataURL(file);
   };
   if (image) return (
-    <div className="relative inline-block"><img src={image.base64} alt={image.name} className="h-20 w-20 rounded-xl object-cover ring-1 ring-gray-100" />
-      <button type="button" onClick={onRemove} className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-gray-900 text-white shadow-sm transition-transform hover:scale-110 active:scale-90" aria-label="删除图片"><X size={11} strokeWidth={2.5} /></button></div>
+    <div className="relative inline-flex items-center gap-2">
+      <div className="relative">
+        <img src={image.base64} alt={image.name} className="h-10 w-10 rounded-lg object-cover ring-1 ring-gray-200" />
+        <div className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
+          <Check size={9} strokeWidth={3} />
+        </div>
+      </div>
+      <span className="text-[11px] font-medium text-gray-500">已附加截图</span>
+      <button type="button" onClick={onRemove} className="ml-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-gray-200 text-gray-500 transition-colors hover:bg-red-100 hover:text-red-500" aria-label="删除图片"><X size={10} strokeWidth={2.5} /></button>
+    </div>
   );
   return (<><input ref={inputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
     <button type="button" onClick={() => inputRef.current?.click()} className="inline-flex items-center gap-2 rounded-xl border border-dashed border-gray-200 bg-gray-50/50 px-4 py-2.5 text-xs font-medium text-gray-400 transition-all duration-200 hover:border-gray-300 hover:bg-gray-100 hover:text-gray-500"><Image size={15} strokeWidth={1.5} />附加截图</button></>);
@@ -289,7 +297,7 @@ export default function Home() {
     setPersona(entry.persona || ""); setInputText(entry.originalText); setScene(entry.scene); setTone(entry.emotion); setDrawerOpen(false); emitToast("已回填到输入框");
   }, []);
 
-  const canGenerate = inputText.trim().length > 0;
+  const canGenerate = inputText.trim().length > 0 || !!(image?.base64);
 
   const handleGenerate = useCallback(async () => {
     if (!canGenerate) return;

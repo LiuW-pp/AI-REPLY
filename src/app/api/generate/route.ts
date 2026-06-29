@@ -108,6 +108,12 @@ function buildSystemPrompt(
   parts.push("4. 字数控制在 20-80 字之间，简洁有力，不啰嗦。");
   parts.push("5. 拒绝网络烂梗、拒绝爹味说教、拒绝假大空的鸡汤。");
   parts.push("6. 读起来要像是一个真实、聪明、有品位的人打出来的字，而不是 AI 生成的。");
+  parts.push("");
+  parts.push("## 表情符号使用策略");
+  parts.push("- 在轻松、幽默、日常社交场景中，可以适量使用 1-2 个 emoji 来增强表现力（如 😂💀👀🙃🤡🔥）。");
+  parts.push("- emoji 必须点缀在句尾或自然位置，不要堆砌。");
+  parts.push("- 在「专业严谨」「高情商」模式下，减少或不用 emoji。");
+  parts.push("- 在「阴阳怪气」「发疯文学」「林黛玉语气」模式下，emoji 是绝佳武器——多用一个 😅 能气死对方。");
 
   parts.push("");
   parts.push("## 输出格式（严格遵守）");
