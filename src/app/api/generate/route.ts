@@ -207,17 +207,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const systemContent = buildSystemPrompt(scenario, emotion, persona, customReq);
+    // 检测模型是否支持多模态 vision
+    const modelSupportsVision =
+      model.includes("gpt-4") || model.includes("claude") || model.includes("vision") || model.includes("vl");
 
-    const userTextBase = hasImage
-      ? `对方原话："""${validText}"""\n\n请仔细阅读图片中的聊天上下文，结合对方的原话，生成 3 条不同角度的回复。`
-      : `对方原话："""${validText}"""\n\n请生成 3 条不同角度的回复。`;
+    // 构建 user message — 如果不支持 vision 有图片，优雅降级为纯文本
+    let userTextBase: string;
+    if (hasImage && modelSupportsVision) {
+      userTextBase = `对方原话："""${validText}"""\n\n请仔细阅读图片中的聊天上下文，结合对方的原话，生成 3 条不同角度的回复。`;
+    } else if (hasImage && !modelSupportsVision) {
+      userTextBase = `对方原话："""${validText}"""\n\n（注：用户上传了一张截图，但当前模型不支持图片识别。请仅基于对方的原话生成 3 条不同角度的回复。）`;
+    } else {
+      userTextBase = `对方原话："""${validText}"""\n\n请生成 3 条不同角度的回复。`;
+    }
+
+    const useVisionPayload = hasImage && modelSupportsVision;
+
+    const systemContent = buildSystemPrompt(scenario, emotion, persona, customReq);
 
     const messages: { role: string; content: unknown }[] = [
       { role: "system", content: systemContent },
       {
         role: "user",
-        content: hasImage
+        content: useVisionPayload
           ? [
               { type: "text", text: userTextBase },
               { type: "image_url", image_url: { url: imageBase64, detail: "auto" } },
