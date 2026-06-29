@@ -6,41 +6,118 @@ import { NextRequest, NextResponse } from "next/server";
 
 interface GenerateRequest {
   originalText: string;
-  scenario: "职场沟通" | "日常社交" | "网络对线";
-  emotion: "高情商" | "幽默风趣" | "阴阳怪气" | "专业严谨";
-}
-
-interface ChatMessage {
-  role: "system" | "user";
-  content: string;
+  /** 场景：预设值 | "auto"（智能感知）| 任意自定义字符串 */
+  scenario: string;
+  /** 情绪：预设值 | "auto"（智能感知）| 任意自定义字符串 */
+  emotion: string;
+  persona?: string;
+  extraNote?: string;
+  customRequirement?: string;
+  image?: string;
+  imageBase64?: string;
 }
 
 // ============================================================
 // System Prompt 模板
 // ============================================================
 
-function buildSystemPrompt(scenario: string, emotion: string): string {
-  return `你是一位具备顶级「网感」与超高情商的沟通大师。你的任务是根据用户提供的"对方原话"，生成 3 条不同角度的回复。
+const PRESET_SCENARIOS = ["职场沟通", "日常社交", "网络对线"];
+const PRESET_EMOTIONS = ["高情商", "幽默风趣", "阴阳怪气", "专业严谨"];
 
-## 核心身份
-你深谙人际沟通的底层逻辑，懂得如何在复杂的社交场景中游刃有余。你的回复永远自然、精炼、有「人味儿」，拒绝一切 AI 机械感、土味说教、以及僵硬的话术模板。
+function buildSystemPrompt(
+  scenario: string,
+  emotion: string,
+  persona?: string,
+  customReq?: string,
+): string {
+  const parts: string[] = [];
 
-## 场景：${scenario}
-## 情绪/语气：${emotion}
+  // 判断模式
+  const scenarioAuto = scenario === "auto";
+  const emotionAuto = emotion === "auto";
+  const scenarioCustom = !scenarioAuto && !PRESET_SCENARIOS.includes(scenario);
+  const emotionCustom = !emotionAuto && !PRESET_EMOTIONS.includes(emotion);
 
-## 输出要求
-1. 生成恰好 3 条回复，每条从不同角度切入。
-2. 每条回复必须严格匹配「${emotion}」的语气和「${scenario}」的场景。
-3. 字数控制在 20-80 字之间，简洁有力，不啰嗦。
-4. 拒绝网络烂梗、拒绝爹味说教、拒绝假大空的鸡汤。
-5. 读起来要像是一个真实、聪明、有品位的人打出来的字，而不是 AI 生成的。
+  // 基础角色
+  parts.push(
+    "你是一位具备顶级「网感」与超高情商的沟通大师。你的任务是根据用户提供的「对方原话」，生成 3 条不同角度的回复。",
+  );
+  parts.push("");
+  parts.push("## 核心原则");
+  parts.push(
+    "你的回复永远自然、精炼、有「人味儿」，拒绝一切 AI 机械感、土味说教、以及僵硬的话术模板。",
+  );
 
-## 输出格式（严格遵守）
-你必须只输出一个合法的 JSON 数组，不要带任何其他文字、解释或 Markdown 标记。
-数组包含恰好 3 个字符串元素。
+  // --- 人设注入 ---
+  if (persona && persona.trim()) {
+    parts.push("");
+    parts.push("## 🎭 你的说话身份（最高优先级指令）");
+    parts.push(`你现在就是「${persona.trim()}」。`);
+    parts.push(
+      "你必须以这个人设来思考、感受和说话。回复要完全符合这个身份的语气、用词习惯、立场和社交习惯。",
+    );
+    parts.push(
+      "不要使用 AI 味浓重的客套话，而是用这个人设真实会说的、有血有肉的语言。",
+    );
+  }
 
-示例格式：
-["回复一的内容", "回复二的内容", "回复三的内容"]`;
+  // --- 场景指引 ---
+  parts.push("");
+  if (scenarioAuto) {
+    parts.push("## 🔮 场景：智能感知");
+    parts.push(
+      "请首先隐式分析「对方原话」的内容，自行推断当前对话最可能发生的社交场景（如职场、日常闲聊、网络争执等），然后基于你推断的场景来生成回复。不需要在回复中提到你做的推断。",
+    );
+  } else if (scenarioCustom) {
+    parts.push(`## 场景：${scenario}`);
+    parts.push(`请严格按照「${scenario}」这个场景设定来生成回复，忠实理解这个场景的含义和氛围。`);
+  } else {
+    parts.push(`## 场景：${scenario}`);
+  }
+
+  // --- 情绪指引 ---
+  if (emotionAuto) {
+    parts.push("## 🔮 情绪：智能感知");
+    parts.push(
+      "请首先隐式分析「对方原话」中对方的语气、态度和情绪，自行判断最恰当的回应情绪（如高情商圆滑、幽默化解、犀利回怼、专业分析等），然后以你判断的情绪来生成回复。不需要在回复中提到你做的推断。",
+    );
+  } else if (emotionCustom) {
+    parts.push(`## 情绪/语气：${emotion}`);
+    parts.push(`请严格按照「${emotion}」这个情绪基调来生成回复。忠实理解这个情绪描述的含义、语气和表达方式。`);
+  } else {
+    parts.push(`## 情绪/语气：${emotion}`);
+  }
+
+  // --- 自定义要求 ---
+  if (customReq && customReq.trim()) {
+    parts.push("");
+    parts.push("## 附加要求");
+    parts.push(customReq.trim());
+  }
+
+  // --- 输出要求 ---
+  parts.push("");
+  parts.push("## 输出要求");
+  parts.push("1. 生成恰好 3 条回复，每条从不同角度切入。");
+  if (!scenarioAuto) {
+    parts.push(`2. 每条回复必须严格匹配「${scenario}」的场景。`);
+  }
+  if (!emotionAuto) {
+    parts.push(`3. 每条回复必须严格匹配「${emotion}」的语气。`);
+  }
+  parts.push("4. 字数控制在 20-80 字之间，简洁有力，不啰嗦。");
+  parts.push("5. 拒绝网络烂梗、拒绝爹味说教、拒绝假大空的鸡汤。");
+  parts.push("6. 读起来要像是一个真实、聪明、有品位的人打出来的字，而不是 AI 生成的。");
+
+  parts.push("");
+  parts.push("## 输出格式（严格遵守）");
+  parts.push("你必须只输出一个合法的 JSON 数组，不要带任何其他文字、解释或 Markdown 标记。");
+  parts.push("数组包含恰好 3 个字符串元素。");
+  parts.push("");
+  parts.push("示例格式：");
+  parts.push('["回复一的内容", "回复二的内容", "回复三的内容"]');
+
+  return parts.join("\n");
 }
 
 // ============================================================
@@ -48,63 +125,44 @@ function buildSystemPrompt(scenario: string, emotion: string): string {
 // ============================================================
 
 function parseReplies(raw: string): string[] {
-  // 去除首尾空白
   let text = raw.trim();
 
-  // 如果被包在 Markdown 代码块里，剥掉
   const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (codeBlockMatch) {
-    text = codeBlockMatch[1].trim();
-  }
+  if (codeBlockMatch) text = codeBlockMatch[1].trim();
 
-  // 尝试直接解析（也处理截断：尝试补全末尾缺失的 ]）
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
-    // 尝试补全截断的数组
     if (text.startsWith("[") && !text.endsWith("]")) {
-      try {
-        parsed = JSON.parse(text + "]");
-      } catch {
-        parsed = undefined;
-      }
+      try { parsed = JSON.parse(text + "]"); } catch { /* ignore */ }
     }
   }
 
   if (Array.isArray(parsed)) {
     const flat: string[] = [];
     for (const item of parsed as unknown[]) {
-      if (typeof item === "string") {
-        flat.push(item);
-      }
+      if (typeof item === "string") flat.push(item);
     }
     if (flat.length >= 1) return flat.slice(0, 3);
   }
 
-  // 尝试用正则提取引号内的字符串数组元素
-  const stringMatch = text.match(/\[([\s\S]*)\]/);
-  if (stringMatch) {
-    const inner = stringMatch[1];
-    // 匹配双引号字符串（处理转义）
+  const bracketMatch = text.match(/\[([\s\S]*)\]/);
+  if (bracketMatch) {
     const strings: string[] = [];
     const strRegex = /"((?:[^"\\]|\\.)*)"/g;
-    let match: RegExpExecArray | null;
-    while ((match = strRegex.exec(inner)) !== null) {
-      strings.push(match[1].replace(/\\"/g, '"').replace(/\\n/g, "\n"));
+    let m: RegExpExecArray | null;
+    while ((m = strRegex.exec(bracketMatch[1])) !== null) {
+      strings.push(m[1].replace(/\\"/g, '"').replace(/\\n/g, "\n"));
     }
-    if (strings.length >= 1) {
-      return strings.slice(0, 3);
-    }
+    if (strings.length >= 1) return strings.slice(0, 3);
   }
 
-  // 最后兜底：按换行符分割
-  const lines = text
+  return text
     .split(/\n+/)
-    .map((l) => l.replace(/^[\d]+[\.\)、]\s*/, "").replace(/^["']|["']$/g, "").trim())
-    .filter((l) => l.length > 5);
-
-  return lines.slice(0, 3);
+    .map((l) => l.replace(/^\d+[\.\)、]\s*/, "").replace(/^["']|["']$/g, "").trim())
+    .filter((l) => l.length > 5)
+    .slice(0, 3);
 }
 
 // ============================================================
@@ -113,39 +171,23 @@ function parseReplies(raw: string): string[] {
 
 export async function POST(request: NextRequest) {
   try {
-    // 解析请求体
     const body: GenerateRequest = await request.json();
-    const { originalText, scenario, emotion } = body;
+    const originalText = body.originalText?.trim();
+    const scenario = body.scenario || "auto";
+    const emotion = body.emotion || "auto";
+    const persona = body.persona?.trim();
+    const customReq = body.customRequirement?.trim() || body.extraNote?.trim();
+    const imageBase64 = body.imageBase64 || body.image;
 
-    // 参数校验
-    if (!originalText || typeof originalText !== "string" || originalText.trim().length === 0) {
-      return NextResponse.json(
-        { error: "缺少参数 originalText" },
-        { status: 400 },
-      );
+    if (!originalText) {
+      return NextResponse.json({ error: "缺少参数 originalText" }, { status: 400 });
     }
 
-    const validScenarios = ["职场沟通", "日常社交", "网络对线"];
-    const validEmotions = ["高情商", "幽默风趣", "阴阳怪气", "专业严谨"];
+    // 不再校验 scenario/emotion 固定值 — 接受任意字符串
 
-    if (!validScenarios.includes(scenario)) {
-      return NextResponse.json(
-        { error: `无效的 scenario，支持: ${validScenarios.join(", ")}` },
-        { status: 400 },
-      );
-    }
-
-    if (!validEmotions.includes(emotion)) {
-      return NextResponse.json(
-        { error: `无效的 emotion，支持: ${validEmotions.join(", ")}` },
-        { status: 400 },
-      );
-    }
-
-    // 读取环境变量
-    const baseURL = process.env.AI_BASE_URL || "https://api.openai.com/v1";
+    const baseURL = (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
     const apiKey = process.env.AI_API_KEY;
-    const model = process.env.AI_MODEL || "gpt-4o-mini";
+    const model = process.env.AI_MODEL || "deepseek-chat";
 
     if (!apiKey) {
       return NextResponse.json(
@@ -154,65 +196,82 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 构建消息
-    const messages: ChatMessage[] = [
-      { role: "system", content: buildSystemPrompt(scenario, emotion) },
-      { role: "user", content: `对方原话："""${originalText.trim()}"""\n\n请生成 3 条不同角度的回复。` },
+    const systemContent = buildSystemPrompt(scenario, emotion, persona, customReq);
+
+    const hasImage = !!(imageBase64 && imageBase64.startsWith("data:image/"));
+    const userText = hasImage
+      ? `对方原话："""${originalText}"""\n\n请仔细阅读图片中的聊天上下文，结合对方的原话，生成 3 条不同角度的回复。`
+      : `对方原话："""${originalText}"""\n\n请生成 3 条不同角度的回复。`;
+
+    const messages: { role: string; content: unknown }[] = [
+      { role: "system", content: systemContent },
+      {
+        role: "user",
+        content: hasImage
+          ? [
+              { type: "text", text: userText },
+              { type: "image_url", image_url: { url: imageBase64, detail: "auto" } },
+            ]
+          : userText,
+      },
     ];
 
-    // 调用大模型 API
-    const apiUrl = `${baseURL.replace(/\/+$/, "")}/chat/completions`;
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.85,
-        max_tokens: 2048,
-      }),
-    });
+    const apiUrl = `${baseURL}/chat/completions`;
+    const fetchStart = Date.now();
+
+    let response: Response;
+    try {
+      response = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, messages, temperature: 0.85, max_tokens: 2048 }),
+      });
+    } catch (err) {
+      console.error("[generate] fetch 失败:", err);
+      return NextResponse.json({ error: "无法连接到 AI 服务" }, { status: 502 });
+    }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[generate] API 请求失败:", response.status, errorText);
+      const errorText = await response.text().catch(() => "");
+      console.error(`[generate] API ${response.status}:`, errorText.slice(0, 300));
       return NextResponse.json(
-        { error: `AI 服务请求失败 (${response.status})，请检查 API 配置` },
+        { error: `AI 服务返回错误 (${response.status})` },
         { status: 502 },
       );
     }
 
-    const data = await response.json();
-    const content: string | undefined = data.choices?.[0]?.message?.content;
+    let data: Record<string, unknown>;
+    try { data = await response.json(); } catch {
+      return NextResponse.json({ error: "AI 服务返回了无法解析的数据" }, { status: 502 });
+    }
 
-    if (!content) {
-      console.error("[generate] 模型返回为空:", JSON.stringify(data));
+    const choices = data.choices as Array<Record<string, unknown>> | undefined;
+    const choice = choices?.[0];
+    const msg = choice?.message as Record<string, string> | undefined;
+    const content = msg?.content;
+
+    if (!content && msg?.reasoning_content) {
       return NextResponse.json(
-        { error: "模型返回了空内容，请稍后重试" },
+        { error: "当前模型仅返回推理过程，请切换为非 reasoning 模型" },
         { status: 502 },
       );
     }
 
-    // 解析回复
+    if (!content || typeof content !== "string" || !content.trim()) {
+      return NextResponse.json({ error: "模型返回了空内容" }, { status: 502 });
+    }
+
     const replies = parseReplies(content);
-
     if (replies.length === 0) {
-      return NextResponse.json(
-        { error: "无法解析模型返回的回复内容" },
-        { status: 502 },
-      );
+      return NextResponse.json({ error: "无法解析模型返回的回复内容" }, { status: 502 });
     }
 
-    // 成功返回
+    const elapsed = Date.now() - fetchStart;
+    console.log(`[generate] OK — ${replies.length} replies, ${elapsed}ms, mode: ${scenario}/${emotion}`);
+
     return NextResponse.json({ replies });
   } catch (error) {
-    console.error("[generate] 未知错误:", error);
-    return NextResponse.json(
-      { error: "服务器内部错误" },
-      { status: 500 },
-    );
+    console.error("[generate] 未捕获错误:", error);
+    return NextResponse.json({ error: "服务器内部错误" }, { status: 500 });
   }
 }

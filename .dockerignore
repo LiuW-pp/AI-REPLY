@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+out/
+
+# Git
+.git/
+.gitignore
+
+# Env secrets
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+node_modules/.cache/
+
+# Misc
+*.md
+!DEPLOY.md
+AGENTS.md
+CLAUDE.md
