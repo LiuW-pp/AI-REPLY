@@ -185,9 +185,14 @@ export async function POST(request: NextRequest) {
     const customReq = body.customRequirement?.trim() || body.extraNote?.trim();
     const imageBase64 = body.imageBase64 || body.image;
 
-    if (!originalText) {
-      return NextResponse.json({ error: "缺少参数 originalText" }, { status: 400 });
+    const hasImage = !!(imageBase64 && imageBase64.startsWith("data:image/"));
+    const hasText = !!(originalText && originalText.length > 0);
+
+    if (!hasText && !hasImage) {
+      return NextResponse.json({ error: "请提供原话内容或上传截图" }, { status: 400 });
     }
+
+    const validText = originalText || "";
 
     // 不再校验 scenario/emotion 固定值 — 接受任意字符串
 
@@ -204,10 +209,9 @@ export async function POST(request: NextRequest) {
 
     const systemContent = buildSystemPrompt(scenario, emotion, persona, customReq);
 
-    const hasImage = !!(imageBase64 && imageBase64.startsWith("data:image/"));
-    const userText = hasImage
-      ? `对方原话："""${originalText}"""\n\n请仔细阅读图片中的聊天上下文，结合对方的原话，生成 3 条不同角度的回复。`
-      : `对方原话："""${originalText}"""\n\n请生成 3 条不同角度的回复。`;
+    const userTextBase = hasImage
+      ? `对方原话："""${validText}"""\n\n请仔细阅读图片中的聊天上下文，结合对方的原话，生成 3 条不同角度的回复。`
+      : `对方原话："""${validText}"""\n\n请生成 3 条不同角度的回复。`;
 
     const messages: { role: string; content: unknown }[] = [
       { role: "system", content: systemContent },
@@ -215,10 +219,10 @@ export async function POST(request: NextRequest) {
         role: "user",
         content: hasImage
           ? [
-              { type: "text", text: userText },
+              { type: "text", text: userTextBase },
               { type: "image_url", image_url: { url: imageBase64, detail: "auto" } },
             ]
-          : userText,
+          : userTextBase,
       },
     ];
 
